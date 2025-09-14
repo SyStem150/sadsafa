@@ -3,11 +3,11 @@ import requests, time
 
 app = Flask(__name__)
 
-CATALOG_DETAILS_URL = "https://catalog.roblox.com/v1/catalog/items/details"
+ECONOMY_URL = "https://economy.roblox.com/v2/assets/{assetId}/details"
 cache = {}
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; UGCOverlay/1.0)",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     "Accept": "application/json"
 }
 
@@ -17,27 +17,21 @@ def fetch_stats(asset_id: str):
 
     if now - entry["last_update"] > 10 or not entry["data"]:
         try:
-            payload = {"items": [{"itemType": "Asset", "id": int(asset_id)}]}
-            r = requests.post(CATALOG_DETAILS_URL, json=payload, headers=HEADERS, timeout=10)
+            url = ECONOMY_URL.format(assetId=asset_id)
+            r = requests.get(url, headers=HEADERS, timeout=10)
             r.raise_for_status()
             j = r.json()
 
-            if "data" in j and j["data"]:
-                item = j["data"][0]
-                name = item.get("name")
-                total = item.get("totalQuantity")
-                left = item.get("unitsAvailableForConsumption")
-                sold = (total - left) if isinstance(total, int) and isinstance(left, int) else None
+            name = j.get("Name")
+            sales = j.get("Sales")
+            price = j.get("PriceInRobux")
 
-                entry["data"] = {
-                    "assetId": asset_id,
-                    "name": name,
-                    "copies_left": left,
-                    "total_copies": total,
-                    "sold": sold
-                }
-            else:
-                entry["data"] = {"assetId": asset_id, "error": "No data from Roblox API"}
+            entry["data"] = {
+                "assetId": asset_id,
+                "name": name,
+                "sales": sales,
+                "price": price
+            }
         except Exception as e:
             entry["data"] = {"assetId": asset_id, "error": str(e)}
 
@@ -79,7 +73,7 @@ def overlay():
     <body>
       <div id="ugc">Loading…</div>
       <script>
-        let prevLeft = null;
+        let prevSales = null;
         async function update() {{
           try {{
             const res = await fetch("/ugc?assetId={asset_id}&_=" + Date.now());
@@ -90,14 +84,14 @@ def overlay():
               el.innerText = "Error: " + data.error;
               return;
             }}
-            el.innerText = data.name + "\\nCopies Left: " + data.copies_left + "/" + data.total_copies;
+            el.innerText = data.name + "\\nSales: " + data.sales + " | Price: " + data.price + " R$";
 
-            if (prevLeft !== null && typeof data.copies_left === "number" && data.copies_left < prevLeft) {{
+            if (prevSales !== null && typeof data.sales === "number" && data.sales > prevSales) {{
               el.classList.remove("flash");
-              void el.offsetWidth; // restart animation
+              void el.offsetWidth;
               el.classList.add("flash");
             }}
-            prevLeft = data.copies_left;
+            prevSales = data.sales;
           }} catch (e) {{
             document.getElementById("ugc").innerText = "Fetch error";
           }}
